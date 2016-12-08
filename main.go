@@ -152,15 +152,18 @@ func escapeString(input string) string {
 }
 
 func main() {
-	// f, err := os.OpenFile("kodi-mqtt-controller.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	// if err != nil {
-	//  panic(err)
-	// }
-	// defer f.Close()
-	// log.SetOutput(f)
+	f, err := os.OpenFile("mqtt.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
 	opt := mqtt.NewClientOptions()
 	opt.AddBroker("tcp://iot.eclipse.org:1883")
-	opt.SetClientID(fmt.Sprintf("music-downloader-agent-%d", time.Millisecond))
+	clientId := fmt.Sprintf("music-downloader-agent-%d", time.Millisecond)
+	log.Printf("Using client id: %s\n", clientId)
+	opt.SetClientID(clientId)
+
 	client := mqtt.NewClient(opt)
 
 	connectToBroker(client)
@@ -170,8 +173,8 @@ func main() {
 			if !__client.IsConnected() {
 				log.Printf("Connection to broker is lost. Retrying...\n")
 				connectToBroker(__client)
-				// } else {
-				// 	log.Printf("MQTT connection is OK")
+			} else {
+				log.Printf("MQTT connection is OK")
 			}
 			time.Sleep(10 * time.Second)
 		}
