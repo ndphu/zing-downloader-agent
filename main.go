@@ -160,7 +160,7 @@ func main() {
 	log.SetOutput(f)
 	opt := mqtt.NewClientOptions()
 	opt.AddBroker("tcp://iot.eclipse.org:1883")
-	clientId := fmt.Sprintf("music-downloader-agent-%d", time.Millisecond)
+	clientId := fmt.Sprintf("music-downloader-agent-%d", time.Now().Nanosecond())
 	log.Printf("Using client id: %s\n", clientId)
 	opt.SetClientID(clientId)
 
@@ -173,8 +173,6 @@ func main() {
 			if !__client.IsConnected() {
 				log.Printf("Connection to broker is lost. Retrying...\n")
 				connectToBroker(__client)
-			} else {
-				log.Printf("MQTT connection is OK")
 			}
 			time.Sleep(10 * time.Second)
 		}
