@@ -27,11 +27,11 @@ type Item struct {
 	Title        string `xml:"title"`
 	Performer    string `xml:"performer"`
 	Source       string `xml:"source"`
-	Duration     int    `xml:"duration"`
+	Duration     string `xml:"duration"`
 	HQ           string `xml:"hq"`
 	Link         string `xml:"link"`
 	ErrorMessage string `xml:"errormessage"`
-	ErrorCode    int    `xml:"errorcode"`
+	ErrorCode    string `xml:"errorcode"`
 }
 
 type Result struct {
