@@ -32,6 +32,22 @@ type Item struct {
 	Link         string `xml:"link"`
 	ErrorMessage string `xml:"errormessage"`
 	ErrorCode    string `xml:"errorcode"`
+	F360         string `xml:"f360"`
+	F480         string `xml:"f480"`
+	F720         string `xml:"f720"`
+	F1080        string `xml:"f1080"`
+}
+
+type PlaylistJson struct {
+	Items []ItemJson `json:"data"`
+}
+
+type ItemJson struct {
+	Id         string
+	Name       string
+	Artist     string
+	Qualities  [2]string
+	SourceList [2]string `json:"source_list"`
 }
 
 type Result struct {
@@ -40,6 +56,7 @@ type Result struct {
 }
 
 type ControlMessage struct {
+	Type          string
 	Url           string
 	ResponseTopic string
 }
@@ -83,23 +100,78 @@ func handleControlMessage(client mqtt.Client, payload []byte) {
 	}
 
 	log.Printf("Processing playlist %s\n", playlistUrl)
+	var playlist Playlist
+	if strings.Contains(ctlMsg.Url, "json") {
+		log.Println("Processing json data url...")
+		playlist, err = processJsonPlaylistUrl(ctlMsg)
+	} else {
+		playlist, err = processXMLPlaylistUrl(ctlMsg.Url, ctlMsg.Type)
+	}
 
-	playlist, err := processPlaylistUrl(ctlMsg.Url)
 	if err != nil {
 		log.Printf("Fail to process playlist %v\n", err)
 		return
 	} else {
 		log.Println("Process playlist done!")
 	}
+
 	data, err := json.Marshal(playlist)
 	log.Printf("Publishing response message to %s\n", ctlMsg.ResponseTopic)
 	token := client.Publish(ctlMsg.ResponseTopic, 1, false, data)
 	if token.Wait(); token.Error() != nil {
 		log.Printf("Failed to publish response data to %s\n, Error: %v\n", ctlMsg.ResponseTopic, err)
 	}
+
 }
 
-func processPlaylistUrl(playlistUrl string) (playlist Playlist, err error) {
+func processJsonPlaylistUrl(ctlMsg ControlMessage) (playlist Playlist, err error) {
+	resp, err := http.Get(ctlMsg.Url)
+	if err != nil {
+		return playlist, err
+	}
+	defer resp.Body.Close()
+	//var playlist Playlist
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return playlist, err
+	}
+	playlistJson := PlaylistJson{}
+	err = json.Unmarshal(body, &playlistJson)
+	if err != nil {
+		return playlist, err
+	}
+
+	for _, item := range playlistJson.Items {
+		playlist.ItemList = append(playlist.ItemList, Item{
+			Title:     item.Name,
+			Source:    item.SourceList[0],
+			HQ:        item.SourceList[1],
+			Performer: item.Artist,
+		})
+	}
+
+	return playlist, err
+}
+
+func getRealUrl(url string) string {
+	log.Printf("Processing... %s\n", url)
+	resp, err := http.Head(url)
+	if err != nil {
+		log.Printf("Error processing %s\nhttp.Get => %v\n", url, err.Error())
+		return ""
+	}
+	// Overrid original url
+	//item.Source = strings.Replace(resp.Request.URL.String(), "&", "&amp;", -1)
+	//item.Source = "<![CDATA[" + strings.Replace(resp.Request.URL.String(), "&", "&amp;", -1) + "]]"
+	log.Printf("Content disposition: %s\n", resp.Header.Get("Content-Disposition"))
+	return resp.Request.URL.String()
+}
+
+func (i *Item) getRealUrl() {
+
+}
+
+func processXMLPlaylistUrl(playlistUrl string, playlistType string) (playlist Playlist, err error) {
 	resp, err := http.Get(playlistUrl)
 	if err != nil {
 		return playlist, err
@@ -119,19 +191,17 @@ func processPlaylistUrl(playlistUrl string) (playlist Playlist, err error) {
 	//results := make(chan Result)
 	results := make(chan int)
 	for _, item := range playlist.ItemList {
+		log.Printf("item.Source = %s\n", item.Source)
+
 		go func(item *Item) error {
 			//wg.Add(1)
-			resp, err := http.Get(item.Source)
-			if err != nil {
-				log.Printf("Error processing %s\nhttp.Get => %v\n", item.Title, err.Error())
-			}
-			// Overrid original url
-			//item.Source = strings.Replace(resp.Request.URL.String(), "&", "&amp;", -1)
-			//item.Source = "<![CDATA[" + strings.Replace(resp.Request.URL.String(), "&", "&amp;", -1) + "]]"
-			item.Source = resp.Request.URL.String()
-			results <- 0
-			//wg.Done()
+			if playlistType == "mp3" {
+				item.Source = getRealUrl(item.Source)
 
+			} else if playlistType == "mp4" {
+
+			}
+			results <- 0
 			return nil
 		}(&item)
 	}
@@ -152,12 +222,12 @@ func escapeString(input string) string {
 }
 
 func main() {
-	f, err := os.OpenFile("mqtt.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-	log.SetOutput(f)
+	// f, err := os.OpenFile("mqtt.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// defer f.Close()
+	//log.SetOutput(f)
 	opt := mqtt.NewClientOptions()
 	opt.AddBroker("tcp://iot.eclipse.org:1883")
 	clientId := fmt.Sprintf("music-downloader-agent-%d", time.Now().Nanosecond())
