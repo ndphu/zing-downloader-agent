@@ -1,7 +1,7 @@
 package main
 
 import (
-	//"bytes"
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	//"sync"
 	//"regexp"
+	"github.com/PuerkitoBio/goquery"
 	"strings"
 	"syscall"
 	"time"
@@ -59,6 +60,7 @@ type ControlMessage struct {
 	Type          string
 	Url           string
 	ResponseTopic string
+	Raw           bool
 }
 
 var (
@@ -101,7 +103,10 @@ func handleControlMessage(client mqtt.Client, payload []byte) {
 
 	log.Printf("Processing playlist %s\n", playlistUrl)
 	var playlist Playlist
-	if strings.Contains(ctlMsg.Url, "json") {
+	if ctlMsg.Raw {
+		log.Printf("Processing raw url...\n")
+		playlist, err = processRawUrl(ctlMsg)
+	} else if strings.Contains(ctlMsg.Url, "json") {
 		log.Println("Processing json data url...")
 		playlist, err = processJsonPlaylistUrl(ctlMsg)
 	} else {
@@ -121,7 +126,74 @@ func handleControlMessage(client mqtt.Client, payload []byte) {
 	if token.Wait(); token.Error() != nil {
 		log.Printf("Failed to publish response data to %s\n, Error: %v\n", ctlMsg.ResponseTopic, err)
 	}
+}
 
+func processRawUrl(ctlMsg ControlMessage) (playlist Playlist, err error) {
+	data, _, err := readFromUrl(ctlMsg.Url)
+	if err != nil {
+		log.Printf("Error processing raw url: %v\n", err)
+		return playlist, err
+	}
+	doc, err := goquery.NewDocumentFromReader(bytes.NewReader(data))
+	if err != nil {
+		log.Printf("Failed to parse with goquery, %v\n", err)
+		return playlist, err
+	}
+	dataUrl, exists := doc.Find("div#html5player").First().Attr("data-xml")
+	if !exists {
+		log.Printf("Failed to get html5Player: %v\n", err)
+		return playlist, err
+	}
+	log.Printf("Got data url: %s\n", dataUrl)
+	playlistRawData, contentType, err := readFromUrl(dataUrl)
+	if err != nil {
+		log.Printf("Failed to load from data url: %v\n", err)
+		return playlist, err
+	}
+	log.Printf("Content type: %s\n", contentType)
+	//log.Printf("Data %s\n", rawData)
+	if strings.Contains(contentType, "application/json") {
+		playlist, err = processJsonRawData(playlistRawData)
+	} else if strings.Contains(contentType, "text/xml") {
+		playlist, err = processXMLRawData(playlistRawData)
+	} else {
+		log.Printf("Invalid Content-Type header\nServer response:\n %s\n", playlistRawData)
+	}
+
+	return playlist, err
+}
+
+func processJsonRawData(rawData []byte) (playlist Playlist, err error) {
+	playlistJson := PlaylistJson{}
+	err = json.Unmarshal(rawData, &playlistJson)
+	if err != nil {
+		return playlist, err
+	}
+
+	for _, item := range playlistJson.Items {
+		playlist.ItemList = append(playlist.ItemList, Item{
+			Title:     item.Name,
+			Source:    item.SourceList[0],
+			HQ:        item.SourceList[1],
+			Performer: item.Artist,
+		})
+	}
+
+	return playlist, err
+}
+
+func processXMLRawData(rawData []byte) (playlist Playlist, err error) {
+	return playlist, err
+}
+
+func readFromUrl(url string) (data []byte, contentType string, err error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return data, "", err
+	}
+	defer resp.Body.Close()
+	result, err := ioutil.ReadAll(resp.Body)
+	return result, resp.Header.Get("Content-Type"), err
 }
 
 func processJsonPlaylistUrl(ctlMsg ControlMessage) (playlist Playlist, err error) {
