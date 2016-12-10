@@ -21,7 +21,7 @@ import (
 )
 
 type Playlist struct {
-	ItemList []Item `xml:"item"`
+	ItemList []*Item `xml:"item"`
 }
 
 type Item struct {
@@ -60,7 +60,6 @@ type ControlMessage struct {
 	Type          string
 	Url           string
 	ResponseTopic string
-	Raw           bool
 }
 
 var (
@@ -102,16 +101,7 @@ func handleControlMessage(client mqtt.Client, payload []byte) {
 	}
 
 	log.Printf("Processing playlist %s\n", playlistUrl)
-	var playlist Playlist
-	if ctlMsg.Raw {
-		log.Printf("Processing raw url...\n")
-		playlist, err = processRawUrl(ctlMsg)
-	} else if strings.Contains(ctlMsg.Url, "json") {
-		log.Println("Processing json data url...")
-		playlist, err = processJsonPlaylistUrl(ctlMsg)
-	} else {
-		playlist, err = processXMLPlaylistUrl(ctlMsg.Url, ctlMsg.Type)
-	}
+	playlist, err := processRawUrl(ctlMsg)
 
 	if err != nil {
 		log.Printf("Fail to process playlist %v\n", err)
@@ -151,13 +141,31 @@ func processRawUrl(ctlMsg ControlMessage) (playlist Playlist, err error) {
 		return playlist, err
 	}
 	log.Printf("Content type: %s\n", contentType)
-	//log.Printf("Data %s\n", rawData)
 	if strings.Contains(contentType, "application/json") {
 		playlist, err = processJsonRawData(playlistRawData)
 	} else if strings.Contains(contentType, "text/xml") {
 		playlist, err = processXMLRawData(playlistRawData)
 	} else {
 		log.Printf("Invalid Content-Type header\nServer response:\n %s\n", playlistRawData)
+	}
+
+	for _, i := range playlist.ItemList {
+		//item.postProcessItem()
+		if i.Source != "" {
+			// Post process
+			resp, err := http.Get(i.Source)
+			if err == nil {
+				resp.Body.Close()
+
+				cd := resp.Header.Get("Content-Disposition")
+				if cd != "" {
+					log.Printf("Content-Disposition: %s\n", cd)
+				} else {
+					newUrl := i.Source + fmt.Sprintf("&filename=%s.mp3", i.Title)
+					i.Source = newUrl
+				}
+			}
+		}
 	}
 
 	return playlist, err
@@ -171,7 +179,7 @@ func processJsonRawData(rawData []byte) (playlist Playlist, err error) {
 	}
 
 	for _, item := range playlistJson.Items {
-		playlist.ItemList = append(playlist.ItemList, Item{
+		playlist.ItemList = append(playlist.ItemList, &Item{
 			Title:     item.Name,
 			Source:    item.SourceList[0],
 			HQ:        item.SourceList[1],
@@ -196,36 +204,6 @@ func readFromUrl(url string) (data []byte, contentType string, err error) {
 	return result, resp.Header.Get("Content-Type"), err
 }
 
-func processJsonPlaylistUrl(ctlMsg ControlMessage) (playlist Playlist, err error) {
-	resp, err := http.Get(ctlMsg.Url)
-	if err != nil {
-		return playlist, err
-	}
-	log.Printf("Content-Type: %s\n", resp.Header.Get("Content-Type"))
-	defer resp.Body.Close()
-	//var playlist Playlist
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return playlist, err
-	}
-	playlistJson := PlaylistJson{}
-	err = json.Unmarshal(body, &playlistJson)
-	if err != nil {
-		return playlist, err
-	}
-
-	for _, item := range playlistJson.Items {
-		playlist.ItemList = append(playlist.ItemList, Item{
-			Title:     item.Name,
-			Source:    item.SourceList[0],
-			HQ:        item.SourceList[1],
-			Performer: item.Artist,
-		})
-	}
-
-	return playlist, err
-}
-
 func getRealUrl(url string) string {
 	log.Printf("Processing... %s\n", url)
 	resp, err := http.Head(url)
@@ -233,9 +211,6 @@ func getRealUrl(url string) string {
 		log.Printf("Error processing %s\nhttp.Get => %v\n", url, err.Error())
 		return ""
 	}
-	// Overrid original url
-	//item.Source = strings.Replace(resp.Request.URL.String(), "&", "&amp;", -1)
-	//item.Source = "<![CDATA[" + strings.Replace(resp.Request.URL.String(), "&", "&amp;", -1) + "]]"
 	log.Printf("Content disposition: %s\n", resp.Header.Get("Content-Disposition"))
 	return resp.Request.URL.String()
 }
@@ -277,7 +252,7 @@ func processXMLPlaylistUrl(playlistUrl string, playlistType string) (playlist Pl
 			}
 			results <- 0
 			return nil
-		}(&item)
+		}(item)
 	}
 	//time.Sleep(1 * time.Second)
 	//wg.Wait()
