@@ -12,7 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"sync"
+	//"sync"
 	//"regexp"
 	"github.com/PuerkitoBio/goquery"
 	"strings"
@@ -148,13 +148,10 @@ func processRawUrl(ctlMsg ControlMessage) (playlist Playlist, err error) {
 	} else {
 		log.Printf("Invalid Content-Type header\nServer response:\n %s\n", playlistRawData)
 	}
-	var wg sync.WaitGroup
+	syncChan := make(chan int)
 	for _, item := range playlist.ItemList {
 		go func(i *Item) {
-			wg.Add(1)
 			if i.Source != "" {
-				log.Printf("Checking url: %s\n", i.Source)
-				// Post process
 				resp, err := http.Get(i.Source)
 				if err == nil {
 					resp.Body.Close()
@@ -168,11 +165,13 @@ func processRawUrl(ctlMsg ControlMessage) (playlist Playlist, err error) {
 					}
 				}
 			}
-			wg.Done()
+			syncChan <- 0
 		}(item)
 	}
 
-	wg.Wait()
+	for i := 0; i < len(playlist.ItemList); i++ {
+		<-syncChan
+	}
 
 	return playlist, err
 }
