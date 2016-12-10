@@ -129,7 +129,7 @@ func processJsonPlaylistUrl(ctlMsg ControlMessage) (playlist Playlist, err error
 	if err != nil {
 		return playlist, err
 	}
-	log.Println("Content-Type: %s\n", resp.Header.Get("Content-Type"))
+	log.Printf("Content-Type: %s\n", resp.Header.Get("Content-Type"))
 	defer resp.Body.Close()
 	//var playlist Playlist
 	body, err := ioutil.ReadAll(resp.Body)
@@ -178,7 +178,7 @@ func processXMLPlaylistUrl(playlistUrl string, playlistType string) (playlist Pl
 		return playlist, err
 	}
 	defer resp.Body.Close()
-	log.Println("Content-Type: %s\n", resp.Header.Get("Content-Type"))
+	log.Printf("Content-Type: %s\n", resp.Header.Get("Content-Type"))
 	//var playlist Playlist
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
