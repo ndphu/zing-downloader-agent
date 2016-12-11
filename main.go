@@ -284,6 +284,7 @@ func main() {
 	//log.SetOutput(f)
 	opt := mqtt.NewClientOptions()
 	opt.AddBroker("tcp://iot.eclipse.org:1883")
+	opt.SetCleanSession(true)
 	clientId := fmt.Sprintf("music-downloader-agent-%d", time.Now().Nanosecond())
 	log.Printf("Using client id: %s\n", clientId)
 	opt.SetClientID(clientId)
