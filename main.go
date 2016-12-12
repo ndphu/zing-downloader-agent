@@ -303,7 +303,7 @@ func main() {
 					log.Printf("Failed to publish health message. Error: %v\n", token)
 				}
 			}
-			time.Sleep(10 * time.Second)
+			time.Sleep(60 * time.Second)
 		}
 	}(client)
 
