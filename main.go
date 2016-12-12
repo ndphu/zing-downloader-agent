@@ -298,6 +298,10 @@ func main() {
 			if !__client.IsConnected() {
 				log.Printf("Connection to broker is lost. Retrying...\n")
 				connectToBroker(__client)
+			} else {
+				if token := __client.Publish("music-downloader/agent/health", 1, false, "Agent is online"); token.Wait() && token.Error() != nil {
+					log.Printf("Failed to publish health message. Error: %v\n", token)
+				}
 			}
 			time.Sleep(10 * time.Second)
 		}
