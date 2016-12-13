@@ -63,9 +63,26 @@ type ControlMessage struct {
 }
 
 var (
-	TOPIC      = "music-downloader/control"
-	QOS   byte = 1
+	TOPIC               = "music-downloader/control"
+	QOS            byte = 1
+	defaultHandler      = func(c mqtt.Client, m mqtt.Message) {
+		handleControlMessage(c, m.Payload())
+	}
 )
+
+func subscribe(client mqtt.Client) {
+	client.Unsubscribe(TOPIC)
+	if token := client.Subscribe(TOPIC, QOS, func(c mqtt.Client, m mqtt.Message) {
+		//msg := fmt.Sprintf("%s", m.Payload())
+		handleControlMessage(client, m.Payload())
+		//postKodiMessage(msg)
+	}); token.Wait() && token.Error() != nil {
+		log.Println("Fail to connect!")
+		log.Printf("%v\n", token.Error())
+	} else {
+		log.Println("Subscribed to command topic!")
+	}
+}
 
 func connectToBroker(client mqtt.Client) {
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
@@ -73,16 +90,6 @@ func connectToBroker(client mqtt.Client) {
 		log.Printf("%v\n", token.Error())
 	} else {
 		log.Println("Connected to broker!")
-		if token := client.Subscribe(TOPIC, QOS, func(c mqtt.Client, m mqtt.Message) {
-			//msg := fmt.Sprintf("%s", m.Payload())
-			handleControlMessage(client, m.Payload())
-			//postKodiMessage(msg)
-		}); token.Wait() && token.Error() != nil {
-			log.Println("Fail to connect!")
-			log.Printf("%v\n", token.Error())
-		} else {
-			log.Println("Subscribed to command topic!")
-		}
 	}
 }
 
@@ -299,6 +306,7 @@ func main() {
 				log.Printf("Connection to broker is lost. Retrying...\n")
 				connectToBroker(__client)
 			} else {
+				subscribe(__client)
 				if token := __client.Publish("music-downloader/agent/health", 1, false, "Agent is online"); token.Wait() && token.Error() != nil {
 					log.Printf("Failed to publish health message. Error: %v\n", token)
 				}
