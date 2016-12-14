@@ -306,20 +306,20 @@ func main() {
 
 	connectToBroker(client)
 
-	go func(__client mqtt.Client) {
+	go func() {
 		for {
-			if !__client.IsConnected() {
+			if !client.IsConnected() {
 				log.Printf("Connection to broker is lost. Retrying...\n")
-				connectToBroker(__client)
+				connectToBroker(client)
 			} else {
-				subscribe(__client)
-				if token := __client.Publish("music-downloader/agent/health", 1, false, "Agent is online"); token.Wait() && token.Error() != nil {
+				subscribe(client)
+				if token := client.Publish("music-downloader/agent/health", 1, false, "Agent is online"); token.Wait() && token.Error() != nil {
 					log.Printf("Failed to publish health message. Error: %v\n", token)
 				}
 			}
 			time.Sleep(60 * time.Second)
 		}
-	}(client)
+	}()
 
 	defer client.Disconnect(500)
 	sigchan := make(chan os.Signal, 1)
