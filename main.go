@@ -139,8 +139,14 @@ func processRawUrl(ctlMsg ControlMessage) (playlist Playlist, err error) {
 	dataUrl, exists := doc.Find("div#html5player").First().Attr("data-xml")
 	if !exists {
 		log.Printf("Failed to get html5Player: %v\n", err)
+		log.Printf("Looking for single song URL...\n")
+		dataUrl, exists = doc.Find("div#zplayerjs-wrapper").First().Attr("data-xml")
+	}
+
+	if !exists {
 		return playlist, err
 	}
+
 	log.Printf("Got data url: %s\n", dataUrl)
 	playlistRawData, contentType, err := readFromUrl(dataUrl)
 	if err != nil {
