@@ -66,15 +66,16 @@ var (
 	TOPIC               = "music-downloader/control"
 	QOS            byte = 1
 	defaultHandler      = func(c mqtt.Client, m mqtt.Message) {
-		handleControlMessage(c, m.Payload())
+		handleControlMessage(m.Payload())
 	}
+	client mqtt.Client
 )
 
-func subscribe(client mqtt.Client) {
+func subscribe() {
 	client.Unsubscribe(TOPIC)
 	if token := client.Subscribe(TOPIC, QOS, func(c mqtt.Client, m mqtt.Message) {
 		//msg := fmt.Sprintf("%s", m.Payload())
-		handleControlMessage(client, m.Payload())
+		handleControlMessage(m.Payload())
 		//postKodiMessage(msg)
 	}); token.Wait() && token.Error() != nil {
 		log.Println("Fail to connect!")
@@ -84,7 +85,15 @@ func subscribe(client mqtt.Client) {
 	}
 }
 
-func connectToBroker(client mqtt.Client) {
+func connectToBroker() {
+	opt := mqtt.NewClientOptions()
+	opt.AddBroker("tcp://iot.eclipse.org:1883")
+	opt.SetCleanSession(true)
+	clientId := fmt.Sprintf("music-downloader-agent-%d", time.Now().Nanosecond())
+	log.Printf("Using client id: %s\n", clientId)
+	opt.SetClientID(clientId)
+
+	client = mqtt.NewClient(opt)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
 		log.Println("Fail to connect!")
 		log.Printf("%v\n", token.Error())
@@ -93,7 +102,7 @@ func connectToBroker(client mqtt.Client) {
 	}
 }
 
-func handleControlMessage(client mqtt.Client, payload []byte) {
+func handleControlMessage(payload []byte) {
 	var ctlMsg ControlMessage
 	err := json.Unmarshal(payload, &ctlMsg)
 	if err != nil {
@@ -295,24 +304,14 @@ func main() {
 	// }
 	// defer f.Close()
 	//log.SetOutput(f)
-	opt := mqtt.NewClientOptions()
-	opt.AddBroker("tcp://iot.eclipse.org:1883")
-	opt.SetCleanSession(true)
-	clientId := fmt.Sprintf("music-downloader-agent-%d", time.Now().Nanosecond())
-	log.Printf("Using client id: %s\n", clientId)
-	opt.SetClientID(clientId)
-
-	client := mqtt.NewClient(opt)
-
-	connectToBroker(client)
 
 	go func() {
 		for {
-			if !client.IsConnected() {
+			if client == nil || !client.IsConnected() {
 				log.Printf("Connection to broker is lost. Retrying...\n")
-				connectToBroker(client)
+				connectToBroker()
 			} else {
-				subscribe(client)
+				subscribe()
 				if token := client.Publish("music-downloader/agent/health", 1, false, "Agent is online"); token.Wait() && token.Error() != nil {
 					log.Printf("Failed to publish health message. Error: %v\n", token)
 				}
@@ -321,7 +320,9 @@ func main() {
 		}
 	}()
 
-	defer client.Disconnect(500)
+	if client != nil {
+		defer client.Disconnect(500)
+	}
 	sigchan := make(chan os.Signal, 1)
 	signal.Notify(sigchan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL, os.Interrupt, os.Kill)
 	for {
