@@ -297,6 +297,14 @@ func escapeString(input string) string {
 	return strings.Trim(strings.Replace(input, "\n", "", -1), " ")
 }
 
+func publishHealthMessage() {
+	if token := client.Publish("music-downloader/agent/health", 1, false, "Agent is online"); token.Wait() && token.Error() != nil {
+		log.Printf("Failed to publish health message. Error: %v\n", token)
+		return
+	}
+	log.Printf("Published health message!\n")
+}
+
 func main() {
 	// f, err := os.OpenFile("mqtt.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	// if err != nil {
@@ -310,12 +318,9 @@ func main() {
 			if client == nil || !client.IsConnected() {
 				log.Printf("Connection to broker is lost. Retrying...\n")
 				connectToBroker()
-			} else {
-				subscribe()
-				if token := client.Publish("music-downloader/agent/health", 1, false, "Agent is online"); token.Wait() && token.Error() != nil {
-					log.Printf("Failed to publish health message. Error: %v\n", token)
-				}
 			}
+			subscribe()
+			publishHealthMessage()
 			time.Sleep(60 * time.Second)
 		}
 	}()
