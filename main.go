@@ -338,6 +338,7 @@ func main() {
 			sig == syscall.SIGKILL ||
 			sig == os.Interrupt ||
 			sig == os.Kill {
+			log.Printf("Exit process. Success = %s; sig = %s\n", success, sig)
 			break
 		}
 	}
